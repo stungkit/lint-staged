@@ -3,18 +3,11 @@
 const dedent = require('dedent')
 const cosmiconfig = require('cosmiconfig')
 const stringifyObject = require('stringify-object')
-const { getConfig, validateConfig } = require('./getConfig')
 const printErrors = require('./printErrors')
 const runAll = require('./runAll')
+const validateConfig = require('./validateConfig')
 
-const debug = require('debug')('lint-staged')
-
-// Force colors for packages that depend on https://www.npmjs.com/package/supports-color
-// but do this only in TTY mode
-if (process.stdout.isTTY) {
-  // istanbul ignore next
-  process.env.FORCE_COLOR = '1'
-}
+const debugLog = require('debug')('lint-staged')
 
 const errConfigNotFound = new Error('Config could not be found')
 
@@ -43,42 +36,57 @@ function loadConfig(configPath) {
 }
 
 /**
- * Root lint-staged function that is called from .bin
+ * @typedef {(...any) => void} LogFunction
+ * @typedef {{ error: LogFunction, log: LogFunction, warn: LogFunction }} Logger
+ *
+ * Root lint-staged function that is called from `bin/lint-staged`.
+ *
+ * @param {object} options
+ * @param {string} [options.configPath] - Path to configuration file
+ * @param {object}  [options.config] - Object with configuration for programmatic API
+ * @param {boolean} [options.relative] - Pass relative filepaths to tasks
+ * @param {boolean} [options.shell] - Skip parsing of tasks for better shell support
+ * @param {boolean} [options.quiet] - Disable lint-staged’s own console output
+ * @param {boolean} [options.debug] - Enable debug mode
+ * @param {Logger} [logger]
+ *
+ * @returns {Promise<boolean>} Promise of whether the linting passed or failed
  */
-module.exports = function lintStaged(logger = console, configPath, debugMode) {
-  debug('Loading config using `cosmiconfig`')
+module.exports = function lintStaged(
+  { configPath, config, relative = false, shell = false, quiet = false, debug = false } = {},
+  logger = console
+) {
+  debugLog('Loading config using `cosmiconfig`')
 
-  return loadConfig(configPath)
+  return (config ? Promise.resolve({ config, filepath: '(input)' }) : loadConfig(configPath))
     .then(result => {
       if (result == null) throw errConfigNotFound
 
-      debug('Successfully loaded config from `%s`:\n%O', result.filepath, result.config)
+      debugLog('Successfully loaded config from `%s`:\n%O', result.filepath, result.config)
       // result.config is the parsed configuration object
       // result.filepath is the path to the config file that was found
-      const config = validateConfig(getConfig(result.config, debugMode))
-      if (debugMode) {
+      const config = validateConfig(result.config)
+      if (debug) {
         // Log using logger to be able to test through `consolemock`.
         logger.log('Running lint-staged with the following config:')
         logger.log(stringifyObject(config, { indent: '  ' }))
       } else {
         // We might not be in debug mode but `DEBUG=lint-staged*` could have
         // been set.
-        debug('Normalized config:\n%O', config)
+        debugLog('lint-staged config:\n%O', config)
       }
 
-      return runAll(config)
+      return runAll({ config, relative, shell, quiet, debug }, logger)
         .then(() => {
-          debug('linters were executed successfully!')
-          // No errors, exiting with 0
+          debugLog('tasks were executed successfully!')
+          return Promise.resolve(true)
         })
         .catch(error => {
-          // Errors detected, printing and exiting with non-zero
-          process.exitCode = 1
-          printErrors(error)
+          printErrors(error, logger)
+          return Promise.resolve(false)
         })
     })
     .catch(err => {
-      process.exitCode = 1
       if (err === errConfigNotFound) {
         logger.error(`${err.message}.`)
       } else {
@@ -95,5 +103,7 @@ module.exports = function lintStaged(logger = console, configPath, debugMode) {
         Please make sure you have created it correctly.
         See https://github.com/okonet/lint-staged#configuration.
       `)
+
+      return Promise.reject(err)
     })
 }

@@ -1,35 +1,28 @@
 'use strict'
 
-const chunk = require('lodash/chunk')
-const dedent = require('dedent')
-const isWindows = require('is-windows')
-const execa = require('execa')
 const chalk = require('chalk')
+const dedent = require('dedent')
+const execa = require('execa')
 const symbols = require('log-symbols')
-const pMap = require('p-map')
-const calcChunkSize = require('./calcChunkSize')
-const findBin = require('./findBin')
+const stringArgv = require('string-argv')
 
 const debug = require('debug')('lint-staged:task')
 
 /**
- * Execute the given linter binary with arguments and file paths using execa and
+ * Execute the given linter cmd using execa and
  * return the promise.
  *
- * @param {string} bin
+ * @param {string} cmd
  * @param {Array<string>} args
  * @param {Object} execaOptions
- * @param {Array<string>} pathsToLint
  * @return {Promise} child_process
  */
-function execLinter(bin, args, execaOptions, pathsToLint) {
-  const binArgs = args.concat(pathsToLint)
+const execLinter = (cmd, args, execaOptions) => {
+  debug('cmd:', cmd)
+  if (args) debug('args:', args)
+  debug('execaOptions:', execaOptions)
 
-  debug('bin:', bin)
-  debug('args: %O', binArgs)
-  debug('opts: %o', execaOptions)
-
-  return execa(bin, binArgs, { ...execaOptions })
+  return args ? execa(cmd, args, execaOptions) : execa(cmd, execaOptions)
 }
 
 const successMsg = linter => `${symbols.success} ${linter} passed!`
@@ -84,73 +77,45 @@ function makeErr(linter, result, context = {}) {
  * if the OS is Windows.
  *
  * @param {Object} options
- * @param {string} options.linter
- * @param {string} options.gitDir
- * @param {Array<string>} options.pathsToLint
- * @param {number} options.chunkSize
- * @param {number} options.subTaskConcurrency
- * @returns {function(): Promise<string>}
+ * @param {string} options.command — Linter task
+ * @param {String} options.gitDir - Current git repo path
+ * @param {Boolean} options.isFn - Whether the linter task is a function
+ * @param {Array<string>} options.pathsToLint — Filepaths to run the linter task against
+ * @param {Boolean} [options.relative] — Whether the filepaths should be relative
+ * @param {Boolean} [options.shell] — Whether to skip parsing linter task for better shell support
+ * @returns {function(): Promise<Array<string>>}
  */
-module.exports = function resolveTaskFn(options) {
-  const { linter, gitDir, pathsToLint } = options
-  const { bin, args } = findBin(linter)
+module.exports = function resolveTaskFn({ command, files, gitDir, isFn, relative, shell = false }) {
+  const execaOptions = { preferLocal: true, reject: false, shell }
 
-  const execaOptions = { reject: false }
-  // Only use gitDir as CWD if we are using the git binary
-  // e.g `npm` should run tasks in the actual CWD
-  if (/git(\.exe)?$/i.test(bin) && gitDir !== process.cwd()) {
+  if (relative) {
+    execaOptions.cwd = process.cwd()
+  } else if (/^git(\.exe)?/i.test(command) && gitDir !== process.cwd()) {
+    // Only use gitDir as CWD if we are using the git binary
+    // e.g `npm` should run tasks in the actual CWD
     execaOptions.cwd = gitDir
   }
 
-  if (!isWindows()) {
-    debug('%s  OS: %s; File path chunking unnecessary', symbols.success, process.platform)
-    return ctx =>
-      execLinter(bin, args, execaOptions, pathsToLint).then(result => {
-        if (result.failed || result.killed || result.signal != null) {
-          throw makeErr(linter, result, ctx)
-        }
+  let cmd
+  let args
 
-        return successMsg(linter)
-      })
+  if (shell) {
+    execaOptions.shell = true
+    // If `shell`, passed command shouldn't be parsed
+    // If `linter` is a function, command already includes `files`.
+    cmd = isFn ? command : `${command} ${files.join(' ')}`
+  } else {
+    const [parsedCmd, ...parsedArgs] = stringArgv.parseArgsStringToArgv(command)
+    cmd = parsedCmd
+    args = isFn ? parsedArgs : parsedArgs.concat(files)
   }
 
-  const { chunkSize, subTaskConcurrency: concurrency } = options
-
-  const filePathChunks = chunk(pathsToLint, calcChunkSize(pathsToLint, chunkSize))
-  const mapper = execLinter.bind(null, bin, args, execaOptions)
-
-  debug(
-    'OS: %s; Creating linter task with %d chunked file paths',
-    process.platform,
-    filePathChunks.length
-  )
   return ctx =>
-    pMap(filePathChunks, mapper, { concurrency })
-      .catch(err => {
-        /* This will probably never be called. But just in case.. */
-        throw new Error(dedent`
-        ${symbols.error} ${linter} got an unexpected error.
-        ${err.message}
-      `)
-      })
-      .then(results => {
-        const errors = results.filter(res => res.failed || res.killed)
-        const failed = results.some(res => res.failed)
-        const killed = results.some(res => res.killed)
-        const signals = results.map(res => res.signal).filter(Boolean)
+    execLinter(cmd, args, execaOptions).then(result => {
+      if (result.failed || result.killed || result.signal != null) {
+        throw makeErr(command, result, ctx)
+      }
 
-        if (failed || killed || signals.length > 0) {
-          const finalResult = {
-            stdout: errors.map(err => err.stdout).join(''),
-            stderr: errors.map(err => err.stderr).join(''),
-            failed,
-            killed,
-            signal: signals.join(', ')
-          }
-
-          throw makeErr(linter, finalResult, ctx)
-        }
-
-        return successMsg(linter)
-      })
+      return successMsg(command)
+    })
 }

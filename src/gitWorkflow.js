@@ -1,33 +1,13 @@
 'use strict'
 
-const path = require('path')
-const execa = require('execa')
-const gStatus = require('g-status')
 const del = require('del')
 const debug = require('debug')('lint-staged:git')
-const resolveGitDir = require('./resolveGitDir')
+
+const execGit = require('./execGit')
 
 let workingCopyTree = null
 let indexTree = null
 let formattedIndexTree = null
-
-function getAbsolutePath(dir) {
-  return path.isAbsolute(dir) ? dir : path.resolve(dir)
-}
-
-async function execGit(cmd, options) {
-  const cwd = options && options.cwd ? options.cwd : resolveGitDir()
-  debug('Running git command', cmd)
-  try {
-    const { stdout } = await execa('git', [].concat(cmd), {
-      ...options,
-      cwd: getAbsolutePath(cwd)
-    })
-    return stdout
-  } catch (err) {
-    throw new Error(err)
-  }
-}
 
 async function writeTree(options) {
   return execGit(['write-tree'], options)
@@ -51,15 +31,20 @@ async function getDiffForTrees(tree1, tree2, options) {
 }
 
 async function hasPartiallyStagedFiles(options) {
-  const cwd = options && options.cwd ? options.cwd : resolveGitDir()
-  const files = await gStatus({ cwd })
-  const partiallyStaged = files.filter(
-    file =>
-      file.index !== ' ' &&
-      file.workingTree !== ' ' &&
-      file.index !== '?' &&
-      file.workingTree !== '?'
-  )
+  const stdout = await execGit(['status', '--porcelain'], options)
+  if (!stdout) return false
+
+  const changedFiles = stdout.split('\n')
+  const partiallyStaged = changedFiles.filter(line => {
+    /**
+     * See https://git-scm.com/docs/git-status#_short_format
+     * The first letter of the line represents current index status,
+     * and second the working tree
+     */
+    const [index, workingTree] = line
+    return index !== ' ' && workingTree !== ' ' && index !== '?' && workingTree !== '?'
+  })
+
   return partiallyStaged.length > 0
 }
 
@@ -95,8 +80,7 @@ async function applyPatchFor(tree1, tree2, options) {
    * and https://stackoverflow.com/questions/13223868/how-to-stage-line-by-line-in-git-gui-although-no-newline-at-end-of-file-warnin
    */
   // TODO: Figure out how to test this. For some reason tests were working but in the real env it was failing
-  const patch = `${diff}\n` // TODO: This should also work on Windows but test would be good
-  if (patch) {
+  if (diff) {
     try {
       /**
        * Apply patch to index. We will apply it with --reject so it it will try apply hunk by hunk
@@ -107,14 +91,14 @@ async function applyPatchFor(tree1, tree2, options) {
         ['apply', '-v', '--whitespace=nowarn', '--reject', '--recount', '--unidiff-zero'],
         {
           ...options,
-          input: patch
+          input: `${diff}\n` // TODO: This should also work on Windows but test would be good
         }
       )
     } catch (err) {
       debug('Could not apply patch to the stashed files cleanly')
       debug(err)
       debug('Patch content:')
-      debug(patch)
+      debug(diff)
       throw new Error('Could not apply patch to the stashed files cleanly.', err)
     }
   }

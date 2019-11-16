@@ -1,47 +1,55 @@
 'use strict'
 
-const path = require('path')
 const micromatch = require('micromatch')
-const pathIsInside = require('path-is-inside')
-const { getConfig } = require('./getConfig')
-const resolveGitDir = require('./resolveGitDir')
+const normalize = require('normalize-path')
+const path = require('path')
 
 const debug = require('debug')('lint-staged:gen-tasks')
 
-module.exports = function generateTasks(config, stagedRelFiles) {
+/**
+ * Generates all task commands, and filelist
+ *
+ * @param {object} options
+ * @param {Object} [options.config] - Task configuration
+ * @param {Object} [options.cwd] - Current working directory
+ * @param {boolean} [options.gitDir] - Git root directory
+ * @param {boolean} [options.files] - Staged filepaths
+ * @param {boolean} [options.relative] - Whether filepaths to should be relative to gitDir
+ * @returns {Promise}
+ */
+module.exports = function generateTasks({
+  config,
+  cwd = process.cwd(),
+  gitDir,
+  files,
+  relative = false
+}) {
   debug('Generating linter tasks')
 
-  const normalizedConfig = getConfig(config) // Ensure we have a normalized config
-  const { linters, globOptions, ignore } = normalizedConfig
+  const absoluteFiles = files.map(file => normalize(path.resolve(gitDir, file)))
+  const relativeFiles = absoluteFiles.map(file => normalize(path.relative(cwd, file)))
 
-  const gitDir = resolveGitDir()
-  const cwd = process.cwd()
-  const stagedFiles = stagedRelFiles.map(file => path.resolve(gitDir, file))
-
-  return Object.keys(linters).map(pattern => {
+  return Object.entries(config).map(([pattern, commands]) => {
     const isParentDirPattern = pattern.startsWith('../')
-    const commands = linters[pattern]
 
     const fileList = micromatch(
-      stagedFiles
+      relativeFiles
         // Only worry about children of the CWD unless the pattern explicitly
         // specifies that it concerns a parent directory.
-        .filter(file => isParentDirPattern || pathIsInside(file, cwd))
-        // Make the paths relative to CWD for filtering
-        .map(file => path.relative(cwd, file)),
+        .filter(file => {
+          if (isParentDirPattern) return true
+          return !file.startsWith('..') && !path.isAbsolute(file)
+        }),
       pattern,
       {
-        ...globOptions,
-        ignore
+        cwd,
+        dot: true,
+        // If pattern doesn't look like a path, enable `matchBase` to
+        // match against filenames in every directory. This makes `*.js`
+        // match both `test.js` and `subdirectory/test.js`.
+        matchBase: !pattern.includes('/')
       }
-    ).map(file => {
-      // if you set relative option, then the file path will be relative to your package.json
-      if (config.relative) {
-        return path.normalize(file)
-      }
-      // Return absolute path after the filter is run
-      return path.resolve(cwd, file)
-    })
+    ).map(file => normalize(relative ? file : path.resolve(cwd, file)))
 
     const task = { pattern, commands, fileList }
     debug('Generated task: \n%O', task)
