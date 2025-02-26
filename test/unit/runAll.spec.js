@@ -69,6 +69,11 @@ describe('runAll', () => {
     await expect(runAll({})).resolves.toBeTruthy()
   })
 
+  it('should enable debug logs', async () => {
+    expect.assertions(1)
+    await expect(runAll({ debug: true })).resolves.toBeTruthy()
+  })
+
   it('should throw when failed to find staged files', async () => {
     expect.assertions(1)
     getStagedFiles.mockImplementationOnce(async () => null)
@@ -110,7 +115,7 @@ describe('runAll', () => {
   it('should use an injected logger', async () => {
     expect.assertions(1)
     const logger = makeConsoleMock()
-    await runAll({ configObject: { '*.js': ['echo "sample"'] }, configPath, debug: true }, logger)
+    await runAll({ configObject: { '*.js': ['echo "sample"'] }, configPath }, logger)
     expect(logger.printHistory()).toMatchInlineSnapshot(`""`)
   })
 
@@ -157,7 +162,7 @@ describe('runAll', () => {
     expect(console.printHistory()).toMatch(/"data":"SKIPPED".*Running tasks for staged files/)
   })
 
-  it('should skip applying unstaged modifications if there are errors during linting', async () => {
+  it('should skip applying unstaged modifications if there are errors during a task', async () => {
     expect.assertions(2)
 
     getStagedFiles.mockImplementationOnce(async () => ['sample.js'])

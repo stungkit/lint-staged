@@ -1,5 +1,86 @@
 # lint-staged
 
+## 15.4.3
+
+### Patch Changes
+
+- [#1512](https://github.com/lint-staged/lint-staged/pull/1512) [`cbfed1d`](https://github.com/lint-staged/lint-staged/commit/cbfed1dfd2465c4198c692955281f0836600bea1) Thanks [@tarik02](https://github.com/tarik02)! - Adjust TypeScript types for the default export so that it can be used as a value without error TS2693.
+
+## 15.4.2
+
+### Patch Changes
+
+- [#1509](https://github.com/lint-staged/lint-staged/pull/1509) [`8827ebf`](https://github.com/lint-staged/lint-staged/commit/8827ebf29dc8f25149a36450b4a0023425202e18) Thanks [@iiroj](https://github.com/iiroj)! - Change _lint-staged_'s dependencies to use [caret (`^`) ranges](https://docs.npmjs.com/cli/v6/using-npm/semver#caret-ranges-123-025-004) instead of [tilde (`~`)](https://docs.npmjs.com/cli/v6/using-npm/semver#tilde-ranges-123-12-1). This makes it easier for package managers to perform dependency management when minor-level updates are also permitted instead of just patch-level.
+
+## 15.4.1
+
+### Patch Changes
+
+- [#1504](https://github.com/lint-staged/lint-staged/pull/1504) [`1c7a45e`](https://github.com/lint-staged/lint-staged/commit/1c7a45ed2c7fee9d5f55337be16a51e4c9b240e1) Thanks [@iiroj](https://github.com/iiroj)! - Default TypeScript config filenames match JS equivalents.
+
+- [#1504](https://github.com/lint-staged/lint-staged/pull/1504) [`9cc18c9`](https://github.com/lint-staged/lint-staged/commit/9cc18c9debb185490f9ae4f9c1d21ec8c2587393) Thanks [@iiroj](https://github.com/iiroj)! - Add missing conditional exports syntax for TypeScript types.
+
+## 15.4.0
+
+### Minor Changes
+
+- [#1500](https://github.com/lint-staged/lint-staged/pull/1500) [`a8ec1dd`](https://github.com/lint-staged/lint-staged/commit/a8ec1ddb587d2c1c2420dbb4baff8160f0ac46c9) Thanks [@iiroj](https://github.com/iiroj)! - _Lint-staged_ now provides TypeScript types for the configuration and main Node.js API. You can use the JSDoc syntax in your JS configuration files:
+
+  ```js
+  /**
+   * @filename: lint-staged.config.js
+   * @type {import('lint-staged').Configuration}
+   */
+  export default {
+    '*': 'prettier --write',
+  }
+  ```
+
+  It's also possible to use the `.ts` file extension for the configuration if your Node.js version supports it. The `--experimental-strip-types` flag was introduced in [Node.js v22.6.0](https://github.com/nodejs/node/releases/tag/v22.6.0) and unflagged in [v23.6.0](https://github.com/nodejs/node/releases/tag/v23.6.0), enabling Node.js to execute TypeScript files without additional configuration.
+
+  ```shell
+  export NODE_OPTIONS="--experimental-strip-types"
+
+  npx lint-staged --config lint-staged.config.ts
+  ```
+
+### Patch Changes
+
+- [#1501](https://github.com/lint-staged/lint-staged/pull/1501) [`9b79364`](https://github.com/lint-staged/lint-staged/commit/9b793640e1f87b46e4f40fcfc1ecf9d6f6013ac9) Thanks [@iiroj](https://github.com/iiroj)! - Handle possible failures when logging user shell for debug info.
+
+## 15.3.0
+
+### Minor Changes
+
+- [#1495](https://github.com/lint-staged/lint-staged/pull/1495) [`e69da9e`](https://github.com/lint-staged/lint-staged/commit/e69da9e614db2d45f56e113d45d5ec0157813423) Thanks [@iiroj](https://github.com/iiroj)! - Added more info to the debug logs so that "environment" info doesn't need to be added separately to GitHub issues.
+
+- [#1493](https://github.com/lint-staged/lint-staged/pull/1493) [`fa0fe98`](https://github.com/lint-staged/lint-staged/commit/fa0fe98104f8885f673b98b8b49ae586de699c5e) Thanks [@iiroj](https://github.com/iiroj)! - Added more help messages around the automatic `git stash` that _lint-staged_ creates as a backup (by default). The console output also displays the short git _hash_ of the stash so that it's easier to recover lost files in case some fatal errors are encountered, or the process is killed before completing.
+
+  For example:
+
+  ```
+  % npx lint-staged
+  ✔ Backed up original state in git stash (20addf8)
+  ✔ Running tasks for staged files...
+  ✔ Applying modifications from tasks...
+  ✔ Cleaning up temporary files...
+  ```
+
+  where the backup can be seen with `git show 20addf8`, or `git stash list`:
+
+  ```
+  % git stash list
+  stash@{0}: lint-staged automatic backup (20addf8)
+  ```
+
+## 15.2.11
+
+### Patch Changes
+
+- [#1484](https://github.com/lint-staged/lint-staged/pull/1484) [`bcfe309`](https://github.com/lint-staged/lint-staged/commit/bcfe309fca88aedf42b6a321383de49eb361c5a0) Thanks [@wormsik](https://github.com/wormsik)! - Escape paths containing spaces when using the "shell" option.
+
+- [#1487](https://github.com/lint-staged/lint-staged/pull/1487) [`7dd8caa`](https://github.com/lint-staged/lint-staged/commit/7dd8caa8f80fe1a6ce40939c1224b6774000775a) Thanks [@iiroj](https://github.com/iiroj)! - Do not treat submodule root paths as "staged files". This caused _lint-staged_ to fail to a Git error when only updating the revision of a submodule.
+
 ## 15.2.10
 
 ### Patch Changes

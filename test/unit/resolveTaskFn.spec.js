@@ -120,6 +120,28 @@ describe('resolveTaskFn', () => {
     })
   })
 
+  it('shell should work with spaces in file paths', async () => {
+    expect.assertions(2)
+    const taskFn = resolveTaskFn({
+      shell: true,
+      command: 'node --arg=true ./myscript.js',
+      files: ['test file.js', 'file with/multiple spaces.js'],
+    })
+
+    await taskFn()
+    expect(execaCommand).toHaveBeenCalledTimes(1)
+    expect(execaCommand).toHaveBeenLastCalledWith(
+      'node --arg=true ./myscript.js test\\ file.js file\\ with/multiple\\ spaces.js',
+      {
+        cwd: process.cwd(),
+        preferLocal: true,
+        reject: false,
+        shell: true,
+        stdin: 'ignore',
+      }
+    )
+  })
+
   it('should pass `topLevelDir` as `cwd` to `execa()` topLevelDir !== process.cwd for git commands', async () => {
     expect.assertions(2)
     const taskFn = resolveTaskFn({
@@ -154,7 +176,7 @@ describe('resolveTaskFn', () => {
     })
   })
 
-  it('should throw error for failed linters', async () => {
+  it('should throw error for failed tasks', async () => {
     expect.assertions(1)
     execa.mockReturnValueOnce(
       mockExecaReturnValue({
